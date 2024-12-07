@@ -10,54 +10,159 @@
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/OptimizationLevel.h"
 #include "llvm/Analysis/CFG.h"
+#include <iostream>
+#include "llvm/IR/Module.h"
+
 
 #include <set>
 #include <map>
 #include <queue>
+#include <string>
 
 using namespace llvm;
 
 class SeminalInputPass : public PassInfoMixin<SeminalInputPass> {
 public:
     // Store input variables detected from I/O functions
-    std::set<Value *> inputVariables;
+    std::map<Value*, unsigned> inputVariables;
     // Map of key points to input dependencies
     std::map<Instruction *, std::set<Value *>> keyPointDependencies;
+    std::map<AllocaInst*, unsigned> declaredVariables;
+    std::map<Instruction*, bool> keyPointGetcFound;
 
-    // Run the pass on each function
+
+    // Key point ID counters and dictionary
+    unsigned branchCounter = 1;
+    unsigned funcPtrCounter = 1;
+    std::map<Instruction*, std::string> keyPointIDs; // Map from key point to ID
+    // For demonstration, store dictionary info: ID -> {file, line, targetLine}
+    struct KeyPointInfo {
+        std::string file;
+        unsigned line;
+        unsigned targetLine; // simplistic assumption
+    };
+    std::map<std::string, KeyPointInfo> keyPointDict;
+
+    // Track file pointers from fopen
+    std::set<Value*> filePointers; // If we detect fopen returning FILE*, store it
+    // If loops depend on getc(fp), we might say "size of file fp" is input feature
+
     PreservedAnalyses run(Function &F, FunctionAnalysisManager &FAM) {
-        // Reset per-function data structures
         inputVariables.clear();
         keyPointDependencies.clear();
+        declaredVariables.clear();
+        filePointers.clear();
+        keyPointIDs.clear();
+        keyPointDict.clear();
+        branchCounter = 1;
+        funcPtrCounter = 1;
 
-        // Perform the analysis
+        collectDeclaredVariables(F);
+        listDbgDeclareInsts(F);
+
         detectInputVariables(F);
         detectKeyPoints(F);
         analyzeInputInfluence(F);
         printResults(F);
 
-        return PreservedAnalyses::all();
-    }
 
-    // Step 1: Detect input variables from functions like scanf, getc, fread, etc.
-   void detectInputVariables(Function &F) {
-        for (auto &BB : F) {
-            for (auto &Inst : BB) {
-                // Detect calls to input functions
-                if (CallInst *call = dyn_cast<CallInst>(&Inst)) {
-                    Function *calledFunc = call->getCalledFunction();
-                    if (calledFunc) {
-                        StringRef funcName = calledFunc->getName();
-                        if (isInputFunction(funcName)) {
-                            // Handle different input functions
-                            for (unsigned i = 0; i < call->arg_size(); ++i) {
-                                Value *arg = call->getArgOperand(i);
-                                // For functions like scanf, arguments after format string are inputs
-                                if (funcName == "scanf" && i == 0)
-                                    continue; // Skip format string
-                                Value *var = stripCasts(arg);
-                                inputVariables.insert(var);
-                                printValueLocation(var, "Detected input variable");
+        return PreservedAnalyses::all();
+}
+
+    void detectInputVariables(Function &F) {
+    for (auto &BB : F) {
+        for (auto &Inst : BB) {
+            if (CallInst *call = dyn_cast<CallInst>(&Inst)) {
+                Function *calledFunc = call->getCalledFunction();
+                if (!calledFunc) {
+                    continue;
+                }
+                StringRef funcName = calledFunc->getName();
+                if (isInputFunction(funcName)) {
+                    for (unsigned i = 0; i < call->arg_size(); ++i) {
+                        Value *arg = call->getArgOperand(i);
+                        if (funcName == "scanf" && i == 0)
+                            continue; // Skip format string
+                        Value *var = stripCasts(arg);
+
+                        // Check if 'var' is a stack-allocated AllocaInst
+                        AllocaInst *AllocaVar = getAllocaInst(var);
+                        if (!AllocaVar) {
+                            AllocaVar = dyn_cast<AllocaInst>(var);
+                        }
+
+                        if (AllocaVar) {
+                            unsigned declLine = 0;
+                            auto it = declaredVariables.find(AllocaVar);
+                            if (it != declaredVariables.end()) {
+                                declLine = it->second;
+                            }
+                            if (declLine == 0) {
+                                declLine = call->getDebugLoc() ? call->getDebugLoc()->getLine() : 0;
+                            }
+                            inputVariables[AllocaVar] = declLine;
+                            
+                        }
+
+                        // Additionally, check if 'var' is a GlobalVariable
+                      // Additionally, check if 'var' is a GlobalVariable
+                        if (GlobalVariable *GV = dyn_cast<GlobalVariable>(var)) {
+                            unsigned callLine = call->getDebugLoc() ? call->getDebugLoc()->getLine() : 0;
+
+                            // Assign the line number of the input function call to the global variable
+                            inputVariables[GV] = callLine;
+
+                         
+                        }
+
+                    }
+                } else if (funcName == "fopen") {
+                    bool foundAllocaForFp = false;
+                    if (!call->use_empty()) {
+                        for (User *U : call->users()) {
+                            if (StoreInst *SI = dyn_cast<StoreInst>(U)) {
+                                Value *storedValue = SI->getValueOperand();
+                                // Check if stored value is assigned to a global variable
+                                if (GlobalVariable *GV = dyn_cast<GlobalVariable>(storedValue)) {
+                                    unsigned declLine = call->getDebugLoc() ? call->getDebugLoc()->getLine() : 0;
+                                    inputVariables[GV] = declLine;
+                                    filePointers.insert(GV);
+                                    foundAllocaForFp = true;
+                                    
+                                    break;
+                                }
+
+                                // Check if stored value is assigned to a stack variable
+                                AllocaInst *fpAlloca = getAllocaInst(SI->getPointerOperand());
+                                if (fpAlloca) {
+                                    unsigned declLine = call->getDebugLoc() ? call->getDebugLoc()->getLine() : 0;
+                                    inputVariables[fpAlloca] = declLine;
+                                    filePointers.insert(fpAlloca);
+                                    foundAllocaForFp = true;
+                                    
+                                    break;
+                                }
+                            } else if (BitCastInst *BCI = dyn_cast<BitCastInst>(U)) {
+                                AllocaInst *fpAlloca = getAllocaInst(BCI);
+                                if (fpAlloca) {
+                                    unsigned declLine = call->getDebugLoc() ? call->getDebugLoc()->getLine() : 0;
+                                    inputVariables[fpAlloca] = declLine;
+                                    filePointers.insert(fpAlloca);
+                                    foundAllocaForFp = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    if (!foundAllocaForFp) {
+                        // Handle global variables returned by fopen using the public 'globals()' method
+                        for (GlobalVariable &GV : F.getParent()->globals()) {
+                            if (GV.getName() == "fp") { // Assuming 'fp' is the global FILE* variable
+                                unsigned declLine = call->getDebugLoc() ? call->getDebugLoc()->getLine() : 0;
+                                inputVariables[&GV] = declLine;
+                                filePointers.insert(&GV);
+                                break;
                             }
                         }
                     }
@@ -65,91 +170,176 @@ public:
             }
         }
     }
-
-
-    // Helper to check if a function is an input function
-    bool isInputFunction(StringRef funcName) {
-        return funcName == "scanf" || funcName == "getc" || funcName == "fgetc" ||
-               funcName == "fread" || funcName == "fgets" || funcName == "fscanf";
     }
 
-    // Step 2: Detect key points (conditional branches and function pointer calls)
+
+    void collectDeclaredVariables(Function &F) {
+        for (auto &BB : F) {
+            for (auto &Inst : BB) {
+                if (auto *DDI = dyn_cast<DbgDeclareInst>(&Inst)) {
+                    Value *V = DDI->getAddress();
+                    if (AllocaInst *AI = dyn_cast<AllocaInst>(V)) {
+                        DILocalVariable *Var = DDI->getVariable();
+                        if (Var) {
+                            unsigned line = Var->getLine();
+                            auto it = declaredVariables.find(AI);
+                            if (it == declaredVariables.end() || line < it->second) {
+                                declaredVariables[AI] = line;
+                            }
+                            errs() << "Variable " << Var->getName() << " declared at line " << line << "\n";
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Minimal heuristic: if conditional branch depends on getc(fp),
+    // we say "size of file fp" is input feature
+    // This might need more sophisticated logic, but for demonstration:
+    bool dependsOnFileSize(const std::set<Value*> &deps, bool foundGetc) {
+        if (!foundGetc) return false; // No file reading calls found
+        for (auto *d : deps) {
+            if (filePointers.count(d)) {
+                return true; // Only return true if we have both getc usage and a file pointer
+            }
+        }
+        return false;
+    }
+
+    bool isInputFunction(StringRef funcName) {
+        return funcName == "scanf" || funcName == "getc" || funcName == "fgetc" ||
+               funcName == "fread" || funcName == "fgets" || funcName == "fscanf" || 
+               funcName == "fopen";
+    }
+
     void detectKeyPoints(Function &F) {
         for (auto &BB : F) {
             for (auto &Inst : BB) {
                 if (isKeyPoint(&Inst)) {
-                    // Initialize empty dependencies; we'll fill them later
+                    // Assign an ID
+                    std::string id;
+                     keyPointDependencies[&Inst] = std::set<Value *>();
+                    keyPointGetcFound[&Inst] = false;
+                    if (BranchInst *br = dyn_cast<BranchInst>(&Inst)) {
+                        if (br->isConditional()) {
+                            id = "br_" + std::to_string(branchCounter++);
+                            // record line info
+                            unsigned line = getLineNumber(br);
+                            KeyPointInfo kpi;
+                            kpi.file = getSourceFileName(br);
+                            kpi.line = line;
+                            kpi.targetLine = 0; // just a placeholder
+                            keyPointDict[id] = kpi;
+                            keyPointIDs[&Inst] = id;
+                        }
+                    } else if (CallInst *call = dyn_cast<CallInst>(&Inst)) {
+                        if (!call->getCalledFunction()) {
+                            // Indirect call
+                            id = "func_" + std::to_string(funcPtrCounter++);
+                            unsigned line = getLineNumber(call);
+                            KeyPointInfo kpi;
+                            kpi.file = getSourceFileName(call);
+                            kpi.line = line;
+                            kpi.targetLine = 0;
+                            keyPointDict[id] = kpi;
+                            keyPointIDs[&Inst] = id;
+                        }
+                    } else {
+                        // Other key points if any
+                    }
+
                     keyPointDependencies[&Inst] = std::set<Value *>();
                 }
             }
         }
     }
 
-    // Step 3: Analyze the influence of input variables on key points
     void analyzeInputInfluence(Function &F) {
-        for (auto &entry : keyPointDependencies) {
-            Instruction *keyPoint = entry.first;
-            std::set<Value *> &dependencies = entry.second;
+    for (auto &entry : keyPointDependencies) {
+        Instruction *keyPoint = entry.first;
+        std::set<Value *> &dependencies = entry.second;
 
-            // Perform backward traversal to find dependencies
-            std::set<Instruction *> visited;
-            std::queue<Instruction *> worklist;
-            worklist.push(keyPoint);
+        std::set<Instruction *> visited;
+        std::queue<Instruction *> worklist;
+        worklist.push(keyPoint);
 
-            while (!worklist.empty()) {
-                Instruction *currentInst = worklist.front();
-                worklist.pop();
+        while (!worklist.empty()) {
+            Instruction *currentInst = worklist.front();
+            worklist.pop();
 
-                if (!visited.insert(currentInst).second)
-                    continue; // Already visited
+            if (!visited.insert(currentInst).second)
+                continue;
 
-                for (Use &U : currentInst->operands()) {
-                    Value *operand = U.get();
-
-                    if (inputVariables.count(operand)) {
-                        dependencies.insert(operand);
-                        continue;
+            // Check if currentInst is a call to getc/fgetc
+            if (CallInst *ci = dyn_cast<CallInst>(currentInst)) {
+                if (Function *cf = ci->getCalledFunction()) {
+                    StringRef fnName = cf->getName();
+                    if (fnName == "getc" || fnName == "fgetc") {
+                        keyPointGetcFound[keyPoint] = true;
                     }
+                }
+            }
 
-                    if (Instruction *operandInst = dyn_cast<Instruction>(operand)) {
-                        worklist.push(operandInst);
-                    }
+            for (Use &U : currentInst->operands()) {
+                Value *operand = U.get();
+
+                if (inputVariables.count(operand)) {
+                    dependencies.insert(operand);
+                    continue;
+                }
+
+                if (Instruction *operandInst = dyn_cast<Instruction>(operand)) {
+                    worklist.push(operandInst);
                 }
             }
         }
     }
+}
 
-    // Utility function to check if a given instruction is a key point.
+
     bool isKeyPoint(Instruction *Inst) {
-        // Conditional branches
         if (BranchInst *br = dyn_cast<BranchInst>(Inst)) {
-            if (br->isConditional())
-                return true;
+            // A branch instruction can be part of a loop condition or an if-else.
+            // If it's conditional, we consider it a key point.
+            return br->isConditional();
         }
-        // Function pointer calls
+
+        if (SwitchInst *si = dyn_cast<SwitchInst>(Inst)) {
+            // Switch instructions also represent branching points.
+            return true;
+        }
+
         if (CallInst *call = dyn_cast<CallInst>(Inst)) {
-            if (!call->getCalledFunction()) // Indirect call (possibly via function pointer)
-                return true;
+            // Indirect calls (function pointers) are also key points.
+            return (!call->getCalledFunction());
         }
+
         return false;
     }
 
-    // Print the results of the pass
+
+
     void printResults(Function &F) {
         errs() << "\nSeminal Input Features for function: " << F.getName() << "\n";
         for (const auto &entry : keyPointDependencies) {
             Instruction *keyPoint = entry.first;
+            const auto &dependencies = entry.second;
+            
+            // Only print if there are actual input variables
+            if (dependencies.empty())
+                continue; // Skip key points with no input variable dependencies
+            
             unsigned line = getLineNumber(keyPoint);
-
-            errs() << "Line " << line << ": Key Point Instruction\n";
             errs() << "  Depends on input variables:\n";
-            for (Value *dep : entry.second) {
+            for (Value *dep : dependencies) {
                 unsigned depLine = getLineNumber(dep);
                 std::string varName = getVariableName(dep);
                 errs() << "    - Line " << depLine << ": " << varName << "\n";
             }
         }
     }
+
     Value *stripCasts(Value *V) {
         while (true) {
             if (BitCastInst *BCI = dyn_cast<BitCastInst>(V)) {
@@ -163,67 +353,164 @@ public:
         return V;
     }
 
-
-    // Helper function to get the source line number of an instruction
-unsigned getLineNumber(Value *V) {
-    if (Instruction *Inst = dyn_cast<Instruction>(V)) {
-        // Check if the instruction has a debug location
-        if (DILocation *Loc = Inst->getDebugLoc()) {
-            return Loc->getLine();
+    unsigned getLineNumber(Value *V) {
+        if (AllocaInst *AI = dyn_cast<AllocaInst>(V)) {
+            auto it = inputVariables.find(AI);
+            if (it != inputVariables.end()) {
+                return it->second; // Declaration line (now the input function call line)
+            }
         }
 
-        // If it's an AllocaInst, check for associated debug info
-        if (AllocaInst *Alloca = dyn_cast<AllocaInst>(Inst)) {
-            // Iterate over users to find DbgDeclareInst or DbgValueInst
-            for (User *U : Alloca->users()) {
+        if (GlobalVariable *GV = dyn_cast<GlobalVariable>(V)) {
+            // For global variables, the line number is already set to the input function call line
+            auto it = inputVariables.find(GV);
+            if (it != inputVariables.end()) {
+                return it->second;
+            }
+        }
+        
+        if (Instruction *Inst = dyn_cast<Instruction>(V)) {
+            if (DILocation *Loc = Inst->getDebugLoc()) {
+                return Loc->getLine();
+            }
+        }
+        
+        for (User *U : V->users()) {
+            if (Instruction *UserInst = dyn_cast<Instruction>(U)) {
+                if (DILocation *Loc = UserInst->getDebugLoc()) {
+                    return Loc->getLine();
+                }
+            }
+        }
+        
+        return 0;
+    }
+
+
+
+    std::string getSourceFileName(Instruction *I) {
+        if (DILocation *Loc = I->getDebugLoc()) {
+            if (auto *Scope = Loc->getScope()) {
+                if (auto *File = Scope->getFile()) {
+                    return File->getFilename().str();
+                }
+            }
+        }
+        return "[unknown_file]";
+    }
+
+    DILocalVariable* findDILocalVariable(Value *V) {
+        if (AllocaInst *AI = dyn_cast<AllocaInst>(V)) {
+            for (User *U : AI->users()) {
                 if (DbgDeclareInst *DDI = dyn_cast<DbgDeclareInst>(U)) {
+                    errs() << "Found DbgDeclareInst for AllocaInst: " << *DDI << "\n";
                     DILocalVariable *Var = DDI->getVariable();
-                    return Var->getLine();
-                } else if (DbgValueInst *DVI = dyn_cast<DbgValueInst>(U)) {
-                    DILocalVariable *Var = DVI->getVariable();
-                    return Var->getLine();
+                    if (Var) {
+                        errs() << "DILocalVariable: " << Var->getName() << ", Line: " << Var->getLine() << "\n";
+                    } else {
+                        errs() << "DILocalVariable is null.\n";
+                    }
+                    return Var;
+                } else {
+                    errs() << "User is not a DbgDeclareInst: " << *U << "\n";
+                }
+            }
+        }
+
+        if (Instruction *Inst = dyn_cast<Instruction>(V)) {
+            if (MDNode *VarMD = Inst->getMetadata("dbg")) {
+                if (auto *DILV = dyn_cast<DILocalVariable>(VarMD)) {
+                    errs() << "Found DILocalVariable via metadata: " << DILV->getName() << ", Line: " << DILV->getLine() << "\n";
+                    return DILV;
+                }
+            }
+        }
+
+        for (User *U : V->users()) {
+            if (DILocalVariable *Var = findDILocalVariable(U)) {
+                return Var;
+            }
+        }
+
+        errs() << "No DILocalVariable found for Value: " << *V << "\n";
+        return nullptr;
+    }
+
+    void listDbgDeclareInsts(Function &F) {
+        for (auto &BB : F) {
+            for (auto &Inst : BB) {
+                if (auto *DDI = dyn_cast<DbgDeclareInst>(&Inst)) {
+                    errs() << "DbgDeclareInst found: " << *DDI << "\n";
                 }
             }
         }
     }
 
-    return 0;
+   std::string getVariableName(Value *V) {
+    if (V->hasName()) {
+        return V->getName().str();
+    }
+
+    if (AllocaInst *AI = dyn_cast<AllocaInst>(V)) {
+        // Attempt to get the variable name from debug info
+        for (User *U : AI->users()) {
+            if (DbgVariableIntrinsic *DVI = dyn_cast<DbgVariableIntrinsic>(U)) {
+                DILocalVariable *Var = DVI->getVariable();
+                if (Var) {
+                    return Var->getName().str();
+                }
+            }
+        }
+
+        // If no debug variable found and this Alloca is known to be a file pointer input
+        if (filePointers.count(AI)) {
+            return "fp"; // fallback name
+        }
+    }
+
+    // Handle GlobalVariable
+    if (GlobalVariable *GV = dyn_cast<GlobalVariable>(V)) {
+        if (GV->hasName()) {
+            return GV->getName().str();
+        }
+        return "[global_variable]";
+    }
+
+    return "[unknown]";
 }
 
 
 
-    // Helper function to get the variable name
-    std::string getVariableName(Value *V) {
-        if (V->hasName()) {
-            return V->getName().str();
-        }
 
-        if (AllocaInst *Alloca = dyn_cast<AllocaInst>(V)) {
-            // Iterate over users to find DbgDeclareInst or DbgValueInst
-            for (User *U : Alloca->users()) {
-                if (DbgDeclareInst *DDI = dyn_cast<DbgDeclareInst>(U)) {
-                    DILocalVariable *Var = DDI->getVariable();
-                    return Var->getName().str();
-                } else if (DbgValueInst *DVI = dyn_cast<DbgValueInst>(U)) {
-                    DILocalVariable *Var = DVI->getVariable();
-                    return Var->getName().str();
-                }
+    AllocaInst* getAllocaInst(Value *V) {
+        std::set<Value *> Visited;
+        while (V && Visited.insert(V).second) {
+            if (AllocaInst *AI = dyn_cast<AllocaInst>(V)) {
+                return AI;
+            } else if (BitCastInst *BCI = dyn_cast<BitCastInst>(V)) {
+                V = BCI->getOperand(0);
+            } else if (GetElementPtrInst *GEP = dyn_cast<GetElementPtrInst>(V)) {
+                V = GEP->getPointerOperand();
+            } else if (LoadInst *LI = dyn_cast<LoadInst>(V)) {
+                V = LI->getPointerOperand();
+            } else if (StoreInst *SI = dyn_cast<StoreInst>(V)) {
+                V = SI->getPointerOperand();
+            } else {
+                break;
             }
         }
-
-        return "[unknown]";
+        return nullptr;
     }
 
-
-
-
-    // Helper to print value location
     void printValueLocation(Value *V, StringRef prefix) {
         unsigned line = getLineNumber(V);
         std::string varName = getVariableName(V);
-        errs() << prefix << " at line " << line << ": " << varName << "\n";
+        // errs() << prefix << " at line " << line << ": " << varName << "\n";
     }
-};
+
+    
+
+}; // End of class SeminalInputPass
 
 // New pass manager registration
 extern "C" LLVM_ATTRIBUTE_WEAK ::llvm::PassPluginLibraryInfo llvmGetPassPluginInfo() {

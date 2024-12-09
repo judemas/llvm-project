@@ -1,3 +1,4 @@
+
 // SeminalInputPass.cpp
 
 #include "llvm/IR/Function.h"
@@ -210,7 +211,7 @@ public:
     bool isInputFunction(StringRef funcName) {
         return funcName == "scanf" || funcName == "getc" || funcName == "fgetc" ||
                funcName == "fread" || funcName == "fgets" || funcName == "fscanf" || 
-               funcName == "fopen";
+               funcName == "getc" || funcName == "sscanf" || funcName == "realloc";
     }
 
     void detectKeyPoints(Function &F) {

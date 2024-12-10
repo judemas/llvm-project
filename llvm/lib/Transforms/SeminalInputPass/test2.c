@@ -9,7 +9,7 @@ int main() {
     char c;
     int len = 0;
     while (1) {
-        if ((c =getc(fp)) != EOF) break;
+        if ((c =getc(fp)) == EOF) break;
         if (len >= 1000) break;  // Prevent buffer overflow
         str1[len++] = c;
     }

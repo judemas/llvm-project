@@ -1,0 +1,24 @@
+AllocaInst retval declared without debug info.
+AllocaInst str1 declared without debug info.
+AllocaInst fp declared without debug info.
+AllocaInst c declared without debug info.
+AllocaInst len declared without debug info.
+No DILocalVariable found for Value:   store ptr %call, ptr %fp, align 8, !dbg !809
+No DILocalVariable found for Value:   %call = call ptr @"\01_fopen"(ptr noundef @.str, ptr noundef @.str.1), !dbg !808
+No DILocalVariable found for Value: @.str = private unnamed_addr constant [9 x i8] c"file.txt\00", align 1, !dbg !0
+No DILocalVariable found for Value:   store ptr %call, ptr %fp, align 8, !dbg !809
+No DILocalVariable found for Value:   %call = call ptr @"\01_fopen"(ptr noundef @.str, ptr noundef @.str.1), !dbg !808
+No DILocalVariable found for Value: @.str.1 = private unnamed_addr constant [2 x i8] c"r\00", align 1, !dbg !7
+No DILocalVariable found for Value:   %call11 = call i32 (ptr, ...) @printf(ptr noundef @.str.2, ptr noundef %arraydecay), !dbg !841
+No DILocalVariable found for Value: @.str.2 = private unnamed_addr constant [4 x i8] c"%s\0A\00", align 1, !dbg !12
+Declared AllocaInst: retval at line 0
+Declared AllocaInst: str1 at line 0
+Declared AllocaInst: fp at line 0
+Declared AllocaInst: c at line 0
+Declared AllocaInst: len at line 0
+Input Variables Mapping:
+inputVariables size: 0
+getLineNumber: Instruction  has line 12
+getLineNumber: Instruction  has line 13
+
+Seminal Input Features for function: main

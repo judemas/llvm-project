@@ -55,8 +55,8 @@ public:
         branchCounter = 1;
         funcPtrCounter = 1;
 
-        collectDeclaredVariables(F);
-        listDbgDeclareInsts(F);
+
+
 
         detectInputVariables(F);
         detectKeyPoints(F);
@@ -152,39 +152,9 @@ public:
         }
     }
 
-    void collectDeclaredVariables(Function &F) {
-        for (auto &BB : F) {
-            for (auto &Inst : BB) {
-                if (auto *DDI = dyn_cast<DbgDeclareInst>(&Inst)) {
-                    Value *V = DDI->getAddress();
-                    if (AllocaInst *AI = dyn_cast<AllocaInst>(V)) {
-                        DILocalVariable *Var = DDI->getVariable();
-                        if (Var) {
-                            unsigned line = Var->getLine();
-                            auto it = declaredVariables.find(AI);
-                            if (it == declaredVariables.end() || line < it->second) {
-                                declaredVariables[AI] = line;
-                            }
-                            errs() << "Variable " << Var->getName() << " declared at line " << line << "\n";
-                        }
-                    }
-                }
-            }
-        }
-    }
+    
 
-    // Minimal heuristic: if conditional branch depends on getc(fp),
-    // we say "size of file fp" is input feature
-    // This might need more sophisticated logic, but for demonstration:
-    bool dependsOnFileSize(const std::set<Value*> &deps, bool foundGetc) {
-        if (!foundGetc) return false; // No file reading calls found
-        for (auto *d : deps) {
-            if (filePointers.count(d)) {
-                return true; // Only return true if we have both getc usage and a file pointer
-            }
-        }
-        return false;
-    }
+    
 
     bool isInputFunction(StringRef funcName) {
         return funcName == "scanf" || funcName == "fgetc" || funcName == "fopen" || funcName == "getc"||
@@ -418,16 +388,6 @@ public:
         return nullptr;
     }
 
-    void listDbgDeclareInsts(Function &F) {
-        for (auto &BB : F) {
-            for (auto &Inst : BB) {
-                if (auto *DDI = dyn_cast<DbgDeclareInst>(&Inst)) {
-                    errs() << "DbgDeclareInst found: " << *DDI << "\n";
-                }
-            }
-        }
-    }
-
     std::string getVariableName(Value *V) {
         if (V->hasName()) {
             return V->getName().str();
@@ -481,11 +441,7 @@ public:
         return nullptr;
     }
 
-    void printValueLocation(Value *V, StringRef prefix) {
-        unsigned line = getLineNumber(V);
-        std::string varName = getVariableName(V);
-        // errs() << prefix << " at line " << line << ": " << varName << "\n";
-    }
+    
 }; // End of class SeminalInputPass
 
 // New pass manager registration

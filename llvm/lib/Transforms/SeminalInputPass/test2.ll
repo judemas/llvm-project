@@ -31,7 +31,7 @@ while.body:                                       ; preds = %entry, %if.end7
   %conv = trunc i32 %call1 to i8, !dbg !818
   store i8 %conv, ptr %c, align 1, !dbg !819
   %conv2 = sext i8 %conv to i32, !dbg !820
-  %cmp = icmp ne i32 %conv2, -1, !dbg !821
+  %cmp = icmp eq i32 %conv2, -1, !dbg !821
   br i1 %cmp, label %if.then, label %if.end, !dbg !822
 
 if.then:                                          ; preds = %while.body
@@ -84,7 +84,7 @@ attributes #1 = { "frame-pointer"="non-leaf" "no-trapping-math"="true" "stack-pr
 
 !0 = !DIGlobalVariableExpression(var: !1, expr: !DIExpression())
 !1 = distinct !DIGlobalVariable(scope: null, file: !2, line: 7, type: !3, isLocal: true, isDefinition: true)
-!2 = !DIFile(filename: "test2.c", directory: "/Users/judeelmasr/githubwor/dev-repo/llvm/llvm/lib/Transforms/SeminalInputPass", checksumkind: CSK_MD5, checksum: "4655309f0c29856b130caf65796aaeba")
+!2 = !DIFile(filename: "test2.c", directory: "/Users/judeelmasr/githubwor/dev-repo/llvm/llvm/lib/transforms/seminalinputpass", checksumkind: CSK_MD5, checksum: "a6a6a4c0d7d70fb9cf151a52915c0d61")
 !3 = !DICompositeType(tag: DW_TAG_array_type, baseType: !4, size: 72, elements: !5)
 !4 = !DIBasicType(name: "char", size: 8, encoding: DW_ATE_signed_char)
 !5 = !{!6}

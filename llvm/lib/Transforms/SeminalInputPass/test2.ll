@@ -23,48 +23,48 @@ entry:
     #dbg_declare(ptr %c, !810, !DIExpression(), !811)
     #dbg_declare(ptr %len, !812, !DIExpression(), !813)
   store i32 0, ptr %len, align 4, !dbg !813
-  br label %while.cond, !dbg !814
+  br label %while.body, !dbg !814
 
-while.cond:                                       ; preds = %if.end, %entry
+while.body:                                       ; preds = %entry, %if.end7
   %0 = load ptr, ptr %fp, align 8, !dbg !815
-  %call1 = call i32 @getc(ptr noundef %0), !dbg !816
-  %conv = trunc i32 %call1 to i8, !dbg !816
-  store i8 %conv, ptr %c, align 1, !dbg !817
-  %conv2 = sext i8 %conv to i32, !dbg !818
-  %cmp = icmp ne i32 %conv2, -1, !dbg !819
-  br i1 %cmp, label %while.body, label %while.end.loopexit, !dbg !814
-
-while.body:                                       ; preds = %while.cond
-  %1 = load i32, ptr %len, align 4, !dbg !820
-  %cmp4 = icmp sge i32 %1, 1000, !dbg !823
-  br i1 %cmp4, label %if.then, label %if.end, !dbg !824
+  %call1 = call i32 @getc(ptr noundef %0), !dbg !818
+  %conv = trunc i32 %call1 to i8, !dbg !818
+  store i8 %conv, ptr %c, align 1, !dbg !819
+  %conv2 = sext i8 %conv to i32, !dbg !820
+  %cmp = icmp ne i32 %conv2, -1, !dbg !821
+  br i1 %cmp, label %if.then, label %if.end, !dbg !822
 
 if.then:                                          ; preds = %while.body
-  br label %while.end, !dbg !825
+  br label %while.end, !dbg !823
 
 if.end:                                           ; preds = %while.body
-  %2 = load i8, ptr %c, align 1, !dbg !826
-  %3 = load i32, ptr %len, align 4, !dbg !827
-  %inc = add nsw i32 %3, 1, !dbg !827
-  store i32 %inc, ptr %len, align 4, !dbg !827
-  %idxprom = sext i32 %3 to i64, !dbg !828
-  %arrayidx = getelementptr inbounds [1000 x i8], ptr %str1, i64 0, i64 %idxprom, !dbg !828
-  store i8 %2, ptr %arrayidx, align 1, !dbg !829
-  br label %while.cond, !dbg !814, !llvm.loop !830
+  %1 = load i32, ptr %len, align 4, !dbg !824
+  %cmp4 = icmp sge i32 %1, 1000, !dbg !826
+  br i1 %cmp4, label %if.then6, label %if.end7, !dbg !827
 
-while.end.loopexit:                               ; preds = %while.cond
-  br label %while.end, !dbg !833
+if.then6:                                         ; preds = %if.end
+  br label %while.end, !dbg !828
 
-while.end:                                        ; preds = %while.end.loopexit, %if.then
-  %4 = load i32, ptr %len, align 4, !dbg !833
-  %idxprom6 = sext i32 %4 to i64, !dbg !834
-  %arrayidx7 = getelementptr inbounds [1000 x i8], ptr %str1, i64 0, i64 %idxprom6, !dbg !834
-  store i8 0, ptr %arrayidx7, align 1, !dbg !835
-  %5 = load ptr, ptr %fp, align 8, !dbg !836
-  %call8 = call i32 @fclose(ptr noundef %5), !dbg !837
-  %arraydecay = getelementptr inbounds [1000 x i8], ptr %str1, i64 0, i64 0, !dbg !838
-  %call9 = call i32 (ptr, ...) @printf(ptr noundef @.str.2, ptr noundef %arraydecay), !dbg !839
-  ret i32 0, !dbg !840
+if.end7:                                          ; preds = %if.end
+  %2 = load i8, ptr %c, align 1, !dbg !829
+  %3 = load i32, ptr %len, align 4, !dbg !830
+  %inc = add nsw i32 %3, 1, !dbg !830
+  store i32 %inc, ptr %len, align 4, !dbg !830
+  %idxprom = sext i32 %3 to i64, !dbg !831
+  %arrayidx = getelementptr inbounds [1000 x i8], ptr %str1, i64 0, i64 %idxprom, !dbg !831
+  store i8 %2, ptr %arrayidx, align 1, !dbg !832
+  br label %while.body, !dbg !814, !llvm.loop !833
+
+while.end:                                        ; preds = %if.then6, %if.then
+  %4 = load i32, ptr %len, align 4, !dbg !835
+  %idxprom8 = sext i32 %4 to i64, !dbg !836
+  %arrayidx9 = getelementptr inbounds [1000 x i8], ptr %str1, i64 0, i64 %idxprom8, !dbg !836
+  store i8 0, ptr %arrayidx9, align 1, !dbg !837
+  %5 = load ptr, ptr %fp, align 8, !dbg !838
+  %call10 = call i32 @fclose(ptr noundef %5), !dbg !839
+  %arraydecay = getelementptr inbounds [1000 x i8], ptr %str1, i64 0, i64 0, !dbg !840
+  %call11 = call i32 (ptr, ...) @printf(ptr noundef @.str.2, ptr noundef %arraydecay), !dbg !841
+  ret i32 0, !dbg !842
 }
 
 declare ptr @"\01_fopen"(ptr noundef, ptr noundef) #1
@@ -84,7 +84,7 @@ attributes #1 = { "frame-pointer"="non-leaf" "no-trapping-math"="true" "stack-pr
 
 !0 = !DIGlobalVariableExpression(var: !1, expr: !DIExpression())
 !1 = distinct !DIGlobalVariable(scope: null, file: !2, line: 7, type: !3, isLocal: true, isDefinition: true)
-!2 = !DIFile(filename: "test2.c", directory: "/Users/judeelmasr/githubwor/dev-repo/llvm/llvm/lib/transforms/seminalinputpass", checksumkind: CSK_MD5, checksum: "8aaab722fab0cced9a29de707c2bf682")
+!2 = !DIFile(filename: "test2.c", directory: "/Users/judeelmasr/githubwor/dev-repo/llvm/llvm/lib/Transforms/SeminalInputPass", checksumkind: CSK_MD5, checksum: "4655309f0c29856b130caf65796aaeba")
 !3 = !DICompositeType(tag: DW_TAG_array_type, baseType: !4, size: 72, elements: !5)
 !4 = !DIBasicType(name: "char", size: 8, encoding: DW_ATE_signed_char)
 !5 = !{!6}
@@ -95,7 +95,7 @@ attributes #1 = { "frame-pointer"="non-leaf" "no-trapping-math"="true" "stack-pr
 !10 = !{!11}
 !11 = !DISubrange(count: 2)
 !12 = !DIGlobalVariableExpression(var: !13, expr: !DIExpression())
-!13 = distinct !DIGlobalVariable(scope: null, file: !2, line: 17, type: !14, isLocal: true, isDefinition: true)
+!13 = distinct !DIGlobalVariable(scope: null, file: !2, line: 18, type: !14, isLocal: true, isDefinition: true)
 !14 = !DICompositeType(tag: DW_TAG_array_type, baseType: !4, size: 32, elements: !15)
 !15 = !{!16}
 !16 = !DISubrange(count: 4)
@@ -897,29 +897,31 @@ attributes #1 = { "frame-pointer"="non-leaf" "no-trapping-math"="true" "stack-pr
 !812 = !DILocalVariable(name: "len", scope: !796, file: !2, line: 10, type: !37)
 !813 = !DILocation(line: 10, column: 9, scope: !796)
 !814 = !DILocation(line: 11, column: 5, scope: !796)
-!815 = !DILocation(line: 11, column: 21, scope: !796)
-!816 = !DILocation(line: 11, column: 16, scope: !796)
-!817 = !DILocation(line: 11, column: 15, scope: !796)
-!818 = !DILocation(line: 11, column: 12, scope: !796)
-!819 = !DILocation(line: 11, column: 26, scope: !796)
-!820 = !DILocation(line: 12, column: 13, scope: !821)
-!821 = distinct !DILexicalBlock(scope: !822, file: !2, line: 12, column: 13)
-!822 = distinct !DILexicalBlock(scope: !796, file: !2, line: 11, column: 34)
-!823 = !DILocation(line: 12, column: 17, scope: !821)
-!824 = !DILocation(line: 12, column: 13, scope: !822)
-!825 = !DILocation(line: 12, column: 26, scope: !821)
-!826 = !DILocation(line: 13, column: 23, scope: !822)
-!827 = !DILocation(line: 13, column: 17, scope: !822)
-!828 = !DILocation(line: 13, column: 9, scope: !822)
-!829 = !DILocation(line: 13, column: 21, scope: !822)
-!830 = distinct !{!830, !814, !831, !832}
-!831 = !DILocation(line: 14, column: 5, scope: !796)
-!832 = !{!"llvm.loop.mustprogress"}
-!833 = !DILocation(line: 15, column: 10, scope: !796)
+!815 = !DILocation(line: 12, column: 22, scope: !816)
+!816 = distinct !DILexicalBlock(scope: !817, file: !2, line: 12, column: 13)
+!817 = distinct !DILexicalBlock(scope: !796, file: !2, line: 11, column: 15)
+!818 = !DILocation(line: 12, column: 17, scope: !816)
+!819 = !DILocation(line: 12, column: 16, scope: !816)
+!820 = !DILocation(line: 12, column: 13, scope: !816)
+!821 = !DILocation(line: 12, column: 27, scope: !816)
+!822 = !DILocation(line: 12, column: 13, scope: !817)
+!823 = !DILocation(line: 12, column: 35, scope: !816)
+!824 = !DILocation(line: 13, column: 13, scope: !825)
+!825 = distinct !DILexicalBlock(scope: !817, file: !2, line: 13, column: 13)
+!826 = !DILocation(line: 13, column: 17, scope: !825)
+!827 = !DILocation(line: 13, column: 13, scope: !817)
+!828 = !DILocation(line: 13, column: 26, scope: !825)
+!829 = !DILocation(line: 14, column: 23, scope: !817)
+!830 = !DILocation(line: 14, column: 17, scope: !817)
+!831 = !DILocation(line: 14, column: 9, scope: !817)
+!832 = !DILocation(line: 14, column: 21, scope: !817)
+!833 = distinct !{!833, !814, !834}
 !834 = !DILocation(line: 15, column: 5, scope: !796)
-!835 = !DILocation(line: 15, column: 15, scope: !796)
-!836 = !DILocation(line: 16, column: 12, scope: !796)
-!837 = !DILocation(line: 16, column: 5, scope: !796)
-!838 = !DILocation(line: 17, column: 20, scope: !796)
+!835 = !DILocation(line: 16, column: 10, scope: !796)
+!836 = !DILocation(line: 16, column: 5, scope: !796)
+!837 = !DILocation(line: 16, column: 15, scope: !796)
+!838 = !DILocation(line: 17, column: 12, scope: !796)
 !839 = !DILocation(line: 17, column: 5, scope: !796)
-!840 = !DILocation(line: 19, column: 5, scope: !796)
+!840 = !DILocation(line: 18, column: 20, scope: !796)
+!841 = !DILocation(line: 18, column: 5, scope: !796)
+!842 = !DILocation(line: 20, column: 5, scope: !796)

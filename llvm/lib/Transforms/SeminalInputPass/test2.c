@@ -8,7 +8,8 @@ int main() {
     
     char c;
     int len = 0;
-    while ((c =getc(fp)) != EOF) {
+    while (1) {
+        if ((c =getc(fp)) != EOF) break;
         if (len >= 1000) break;  // Prevent buffer overflow
         str1[len++] = c;
     }
